@@ -1,147 +1,120 @@
-import express, { type Application, type Request, type Response } from 'express';
-import dotenv from 'dotenv';
+import express, { type Application, type Request, type Response } from "express"
+import dotenv from "dotenv"
 
-dotenv.config(); // Memuat variabel lingkungan dari file .env
+dotenv.config()
 
-const app: Application = express();
-const PORT = process.env.PORT || 3000;
+const HOST = process.env.HOST
+const PORT = process.env.PORT
 
-// Middleware agar bisa baca JSON
-app.use(express.json());
+const app: Application = express()
 
-// =====================
-// DATA MENU MAKANAN
-// =====================
-  let products = [
-    { id: 1, nama: "Nasi Goreng", deskripsi: "Nasi goreng spesial dengan telur dan ayam", harga: 20000 },
-    { id: 2, nama: "Mie Ayam", deskripsi: "Mie ayam kuah gurih dengan pangsit", harga: 18000 },
-    { id: 3, nama: "Ayam Geprek", deskripsi: "Ayam crispy dengan sambal level pedas", harga: 22000 },
-    { id: 4, nama: "Soto Ayam", deskripsi: "Soto hangat dengan koya dan jeruk nipis", harga: 17000 },
-    { id: 5, nama: "Es Teh Manis", deskripsi: "Teh manis dingin penyegar dahaga", harga: 5000 }
-  ];
+let products = [
+  { id: 1, nama: "Laptop Asus", deskripsi: "Laptop dengan prosesor intel core i5 dan RAM 8GB", harga: 12000000 },
+  { id: 2, nama: "Smartphone Samsung", deskripsi: "Smartphone dengan layar 6.1 inch dan kamera 50MP", harga: 8000000 },
+  { id: 3, nama: "Tablet Apple", deskripsi: "Tablet dengan layar 10.2 inch dan memori 128GB", harga: 15000000 },
+  { id: 4, nama: "Headphone Sony", deskripsi: "Headphone dengan teknologi noise cancelling dan fitur wireless", harga: 2000000 },
+  { id: 5, nama: "Monitor BenQ", deskripsi: "Monitor dengan ukuran 24 inch dan resolusi full HD", harga: 2500000 }
+];
 
-// =====================
-// ROUTES
-// =====================
+app.use(express.json())
 
-// 1. ROUTE GET – Home
-app.get('/', (req: Request, res: Response) => {
-  res.json({
-    message: "Selamat datang di API E-Commerce (Menu Makanan)!",
-    hari: 3,
-    status: "Server hidup!"
-  });
-});
+app.get("/", (_req: Request, res: Response) => {
+    res.json("ini adalah api utama")
+})
 
-// 2. ROUTE GET – Semua produk
-app.get('/api/products', (req: Request, res: Response) => {
-  res.json({
-    success: true,
-    jumlah: products.length,
-    data: products
-  });
-});
+app.get("/products", (_req: Request, res: Response) => {
+    res.json({
+        status: true,
+        data: products
+    })
+})
 
-// 3. ROUTE GET – Berdasarkan ID (Route Params)
-app.get('/api/products/:id', (req: Request, res: Response) => {
-  const id = parseInt(req.params.id);
-  const product = products.find(p => p.id === id);
+app.get("/products/search", (req: Request, res: Response) => {
+    const { nama, harga, id } = req.query
 
-  if (!product) {
-    return res.status(404).json({
-      success: false,
-      message: "Menu tidak ditemukan"
-    });
-  }
+    let result = products
+    if (nama) result = result.filter(p => p.nama.toLowerCase().includes((nama as string).toLowerCase()))
+    if (harga) result = result.filter(p => p.harga <= Number(harga))
+    if (id) result = result.filter(p => p.id === Number(id))
 
-  res.json({
-    success: true,
-    data: product
-  });
-});
+    res.json({
+        status: true, 
+        data: result
+    })
+})
 
-// 4. ROUTE GET – Filter (Query String)
-app.get('/api/search', (req: Request, res: Response) => {
-  const { name, max_price } = req.query;
+app.get("/products/:id", (req: Request, res: Response) => {
+    const id = parseInt(req.params.id!)
+    const product = products.findIndex(p => p.id === id)
 
-  let result = products;
+    if (!product) {
+        res.json({
+            status: false,
+            message: "Product tidak ditemukan"
+        })
+    }
 
-  if (name) {
-    result = result.filter(p =>
-      p.nama.toLowerCase().includes((name as string).toLowerCase())
-    );
-  }
+    res.json({
+        status: true, 
+        data: product
+    })
+})
 
-  if (max_price) {
-    result = result.filter(p => p.harga <= Number(max_price));
-  }
+app.delete("/products/:id", (req: Request, res: Response) => {
+    const id = parseInt(req.params.id!)
+    const index = products.findIndex(p => p.id === id)
 
-  res.json({
-    success: true,
-    filtered_result: result
-  });
-});
+    if (index === -1) res.json({ status: false, message: "Product tidak ditemukan"})
+    
+    const deleted = products.splice(index, 1) 
 
-// 5. ROUTE POST – Tambah menu
-app.post('/api/products', (req: Request, res: Response) => {
-  const { nama, deskripsi, harga } = req.body;
+    res.json({
+        status: true, 
+        data: deleted[0]
+    })
+})
 
-  const newProduct = {
-    id: products.length + 1,
-    nama,
-    deskripsi,
-    harga: Number(harga)
-  };
+app.post("/products", (req: Request, res: Response) => {
+    const { nama, deskripsi, harga, asal } = req.body
+    if (typeof harga !== 'number') {
+        return res.json({
+            status: false,
+            message: "Harga harus berupa angka"
+        })
+    }
 
-  products.push(newProduct);
+    const newProduct = {
+        id: products.length + 1,
+        nama, 
+        deskripsi,
+        harga,
+        asal
+    }
 
-  res.status(201).json({
-    success: true,
-    message: "Menu berhasil ditambahkan",
-    data: newProduct
-  });
-});
+    products.push(newProduct)
 
-// 6. ROUTE PUT – Update menu
-app.put('/api/products/:id', (req: Request, res: Response) => {
-  const id = parseInt(req.params.id);
-  const index = products.findIndex(p => p.id === id);
+    res.json({
+        status: true,
+        data: products,
+        message: "Product berhasil ditambahkan"
+    })
+})
 
-  if (index === -1) {
-    return res.status(404).json({ success: false, message: "Menu tidak ada" });
-  }
+app.put("/products/:id", (req: Request, res: Response) => {
+    const id = parseInt(req.params.id!)
+    const index = products.findIndex(p => p.id === id)
 
-  products[index] = { ...products[index], ...req.body };
+    if (index === -1) return res.json({ status: false, message: "Product tidak ditemukan"})
 
-  res.json({
-    success: true,
-    message: "Menu berhasil diupdate",
-    data: products[index]
-  });
-});
+    products[index] ={ ...products[index], ...req.body }
 
-// 7. ROUTE DELETE – Hapus menu
-app.delete('/api/products/:id', (req: Request, res: Response) => {
-  const id = parseInt(req.params.id);
-  const index = products.findIndex(p => p.id === id);
+    res.json({
+        status: true, 
+        data: products[index],
+        message: "Product berhasil diupdate"
+    })
+})
 
-  if (index === -1) {
-    return res.status(404).json({ success: false, message: "Menu tidak ada" });
-  }
-
-  const deleted = products.splice(index, 1);
-
-  res.json({
-    success: true,
-    message: "Menu berhasil dihapus",
-    data: deleted[0]
-  });
-});
-
-// =====================
-// SERVER START
-// =====================
 app.listen(PORT, () => {
-  console.log(`Server jalan → http://localhost:${PORT}`);
-  console.log(`Coba buka semua route pakai Postman!`);
-});
+    console.log(`Server berjalan di http://${HOST}:${PORT}`)
+})
