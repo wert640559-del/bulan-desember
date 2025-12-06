@@ -593,6 +593,25 @@ Muhammad Harits
 
 ---
 
+***
+
+### Jawaban Evaluasi Pengetahuan
+
+| No. | Soal | Jawaban Tepat |
+| :---: | :--- | :--- |
+| **1** | Peran utama Backend dalam sebuah aplikasi? | **b)** Mengelola data, logika bisnis, dan komunikasi database |
+| **2** | HTTP Method POST digunakan untuk operasi apa dalam CRUD? | **c)** Create |
+| **3** | Apa arti dari HTTP Status Code 201 Created? | **b)** Data baru berhasil dibuat |
+| **4** | Apa itu Node.js? | **c)** Runtime environment untuk menjalankan JavaScript di luar browser |
+| **5** | Engine JavaScript apa yang digunakan oleh Node.js? | **c)** V8 |
+| **6** | Middleware `express.json()` di Express.js digunakan untuk apa? | **b)** Memparsing body request dalam format JSON |
+| **7** | Perbedaan utama antara Route Params dan Query String? | **b)** Route Params untuk identifikasi resource, Query String untuk filter/sorting |
+| **8** | Apa fungsi utama dari Global Error Handler di Express.js? | **c)** Menangkap semua error yang terjadi di aplikasi dan mengirim respons yang konsisten |
+| **9** | Manfaat utama pemisahan Controller, Service, dan Route? | **b)** Meningkatkan keterbacaan, pemeliharaan, dan skalabilitas kode |
+| **10** | Apa tanggung jawab utama dari Controller dalam arsitektur MVC? | **c)** Menerima request HTTP, mengambil data, dan menyuruh Service untuk logika bisnis, lalu mengirim respons |
+
+***
+
 **Tips Penggunaan:**
 1. Pastikan header `X-API-Key: admin1234` selalu disertakan
 2. Untuk tracking, gunakan `X-Request-ID` di header
