@@ -44,9 +44,10 @@ export const createMember = (nama: string, email: string, telepon: string, alama
         id: members.length + 1,
         nama,
         email,
-        alamat,
         telepon,
-        tanggal_daftar: tanggal_daftar
+        alamat,
+        tanggal_daftar: tanggal_daftar || new Date().toISOString().split('T')[0],
+        created_at: new Date().toISOString()
     }
 
     members.push(newMember as Member)

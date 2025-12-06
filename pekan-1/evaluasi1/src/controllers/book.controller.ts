@@ -17,17 +17,9 @@ export const getAll = asyncHandler((_req: Request, res: Response) => {
 })
 
 export const getById = asyncHandler((req: Request, res: Response) => {
-    if (!req.params.id) {
-        throw new Error("Paramnya gak ada")
-    }
+    const book = getBookbyId(req.params.id!)
 
-    const book = getBookbyId(req.params.id)
-
-    successResponse(
-        res,
-        "Buku berhasil diambil",
-        book
-    )
+    successResponse(res, "Buku berhasil diambil", book)
 })
 
 export const search = asyncHandler((req: Request, res: Response) => {
@@ -45,12 +37,12 @@ export const search = asyncHandler((req: Request, res: Response) => {
 export const create = asyncHandler((req: Request, res: Response) => {
     const { judul, penulis, tahun, stok, deskripsi } = req.body
 
-    const books = createBook(judul, penulis, tahun, stok, deskripsi)
+    const book = createBook(judul, penulis, tahun, stok, deskripsi)
 
     successResponse(
         res,
         "Buku berhasil ditambahkan",
-        books,
+        book,
         null,
         201,
     )

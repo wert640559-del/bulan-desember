@@ -6,7 +6,7 @@ export interface Member {
     alamat?: string
     tanggal_daftar: string
     created_at?: string
-    updatad_at?: string
+    updated_at?: string
 }
 
 export let members: Member[] = [

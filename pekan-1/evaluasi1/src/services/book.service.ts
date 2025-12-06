@@ -16,7 +16,7 @@ export const getBookbyId = (id: string) => {
     return book
 }
 
-export const searchBooks = (search?: string, min_tahun?: string, max_tahun?: string) => {
+export const searchBooks = (search?: string, min_tahun?: string, max_tahun?: string, id?: string) => {
     let result = books;
 
     if (search) {
@@ -35,6 +35,12 @@ export const searchBooks = (search?: string, min_tahun?: string, max_tahun?: str
     if (max_tahun) {
         result = result.filter(p => p.tahun <= Number(max_tahun))
     }
+
+    if (id) {
+        result = result.filter(p => p.id === Number(id))
+    }
+
+    return result
 }
 
 export const createBook = (judul: string, penulis: string, tahun: number, stok: number, deskripsi?: string) => {
@@ -50,7 +56,7 @@ export const createBook = (judul: string, penulis: string, tahun: number, stok: 
 
     books.push(newBook as Book)
 
-    return books
+    return newBook
 }
 
 export const updateBook = (id: string, data: any) => {
@@ -76,5 +82,5 @@ export const deleteBook = (id: string) => {
 
     const deleted = books.splice(index, 1)
 
-    return deleted
+    return deleted[0]
 }

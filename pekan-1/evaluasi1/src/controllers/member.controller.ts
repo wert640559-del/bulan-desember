@@ -17,17 +17,9 @@ export const getAll = asyncHandler((_req: Request, res: Response) => {
 })
 
 export const getById = asyncHandler((req: Request, res: Response) => {
-    if (!req.params.id) {
-        throw new Error("paramnya ga ada")
-    }
-
-    const member = getMemberById(req.params.id)
-
-    successResponse(
-        res, 
-        "Member berhsil diambil",
-        member
-    )
+    const member = getMemberById(req.params.id!)
+    
+    successResponse(res, "Member berhasil diambil", member)
 })
 
 export const search = asyncHandler((req: Request, res: Response) => {
