@@ -1,0 +1,698 @@
+
+
+--- FILE: ./controllers/book.controller.ts ---
+
+import type { Request, Response } from "express"
+import { createBook, deleteBook, getAllBooks, getBookbyId, searchBooks, updateBook } from "../services/book.service"
+import { successResponse } from "../utils/response"
+import { asyncHandler } from "../utils/async.handler"
+
+export const getAll = asyncHandler((_req: Request, res: Response) => {
+    const { books, total } = getAllBooks()
+
+    successResponse(
+        res,
+        "Daftar buku berhasil diambil",
+        {
+            jumlah: total,
+            data: books
+        }
+    )
+})
+
+export const getById = asyncHandler((req: Request, res: Response) => {
+    const book = getBookbyId(req.params.id!)
+
+    successResponse(res, "Buku berhasil diambil", book)
+})
+
+export const search = asyncHandler((req: Request, res: Response) => {
+    const { search, min_tahun, max_tahun } = req.query;
+
+    const result = searchBooks(search?.toString(), min_tahun?.toString(), max_tahun?.toString())
+
+    successResponse(
+        res,
+        "Buku berhasil diambil",
+        result
+    )
+})
+
+export const create = asyncHandler((req: Request, res: Response) => {
+    const { judul, penulis, tahun, stok, deskripsi } = req.body
+
+    const book = createBook(judul, penulis, tahun, stok, deskripsi)
+
+    successResponse(
+        res,
+        "Buku berhasil ditambahkan",
+        book,
+        null,
+        201,
+    )
+})
+
+export const update = asyncHandler((req: Request, res: Response) => {
+    const book = updateBook(req.params.id!, req.body)
+
+    successResponse(
+        res,
+        "Buku berhasil diupdate",
+        book
+    )
+})
+
+export const remove = asyncHandler((req: Request, res: Response) => {
+    const deleted = deleteBook(req.params.id!)
+
+    successResponse(
+        res,
+        "Buku berhasil dihapus",
+        deleted
+    )
+})
+
+--- FILE: ./controllers/member.controller.ts ---
+
+import type { Request, Response } from "express";
+import { asyncHandler } from "../utils/async.handler";
+import { createMember, deleteMember, getAllMembers, getMemberById, searchMembers, updateMember } from "../services/member.service";
+import { successResponse } from "../utils/response";
+
+export const getAll = asyncHandler((_req: Request, res: Response) => {
+    const { members, total } = getAllMembers()
+    
+    successResponse(
+        res,
+        "Daftar member berhasil diambil",
+        {
+            jumlah: total, 
+            data: members
+        }
+    )
+})
+
+export const getById = asyncHandler((req: Request, res: Response) => {
+    const member = getMemberById(req.params.id!)
+    
+    successResponse(res, "Member berhasil diambil", member)
+})
+
+export const search = asyncHandler((req: Request, res: Response) => {
+    const { search, min_tanggal_daftar, max_tanggal_daftar } = req.query;
+
+    const result = searchMembers(search?.toString(), min_tanggal_daftar?.toString(), max_tanggal_daftar?.toString())
+
+    successResponse(
+        res,
+        "Member berhasil diambil",
+        result
+    )
+})
+
+export const create = asyncHandler((req: Request, res: Response) => {
+    const { nama, email, telepon, alamat, tanggal_daftar } = req.body
+
+    const members = createMember(nama, email, telepon, alamat, tanggal_daftar)
+
+    successResponse(
+        res,
+        "Member berhasil ditambahkan",
+        members,
+        null,
+        201
+    )
+})
+
+export const update = asyncHandler((req: Request, res: Response) => {
+    const member = updateMember(req.params.id!, req.body)
+
+    successResponse(
+        res,
+        "Member berhasil diupdate",
+        member
+    )
+})
+
+export const remove = asyncHandler((req: Request, res: Response) => {
+    const deleted = deleteMember(req.params.id!) 
+
+    successResponse(
+        res, 
+        "Member berhasil dihapus",
+        deleted
+    )
+})
+
+--- FILE: ./services/member.service.ts ---
+
+import { members, type Member } from "../models/member.model"
+
+export const getAllMembers = () => {
+    return { members: members, total: members.length }
+}
+
+export const getMemberById = (id: string) => {
+    const numId = parseInt(id)
+
+    const member = members.find(p => p.id === numId)
+
+    if (!member) {
+        throw new Error("Member ga ada")
+    }
+
+    return member
+}
+
+export const searchMembers = (search?: string, min_tanggal_daftar?: string, max_tanggal_daftar?: string) => {
+    let result = members;
+
+    if (search) {
+        const searchLower = (search as string).toLowerCase()
+        result = result.filter(p => 
+            p.nama.toLowerCase().includes(searchLower) ||
+            p.email.toLowerCase().includes(searchLower) ||
+            p.alamat?.toLowerCase().includes(searchLower)
+        )
+    }
+
+    if (min_tanggal_daftar) {
+    result = result.filter(p => new Date(p.tanggal_daftar) >= new Date(min_tanggal_daftar))
+}
+
+    if (max_tanggal_daftar) {
+        result = result.filter(p => new Date(p.tanggal_daftar) <= new Date(max_tanggal_daftar))
+    }
+
+    return result
+}
+
+export const createMember = (nama: string, email: string, telepon: string, alamat?: string, tanggal_daftar?: string) => {
+    const newMember = {
+        id: members.length + 1,
+        nama,
+        email,
+        telepon,
+        alamat,
+        tanggal_daftar: tanggal_daftar || new Date().toISOString().split('T')[0],
+        created_at: new Date().toISOString()
+    }
+
+    members.push(newMember as Member)
+
+    return members
+}
+
+export const updateMember = (id: string, data: any) => {
+    const numId = parseInt(id)
+    const index = members.findIndex(p => p.id === numId)
+
+    if (index === -1 ) {
+        throw new Error("Member ga ada")
+    }
+
+    members[index] = {...members[index], ...data }
+
+    return members[index]
+}
+
+export const deleteMember = (id: string) => {
+    const numId = parseInt(id)
+    const index = members.findIndex(p => p.id === numId)
+
+    if (index === -1) {
+        throw new Error("Member yang mau kamu hapus ga ada")
+    } 
+
+    const deleted = members.splice(index, 1)
+
+    return deleted
+}
+
+--- FILE: ./services/book.service.ts ---
+
+import { books, type Book } from "../models/book.model"
+
+export const getAllBooks = () => {
+    return { books: books, total: books.length }
+}
+
+export const getBookbyId = (id: string) => {
+    const numId = parseInt(id)
+
+    const book = books.find(p => p.id === numId)
+
+    if (!book) {
+        throw new Error("Ndak ada buku yang kamu cari!")
+    }
+
+    return book
+}
+
+export const searchBooks = (search?: string, min_tahun?: string, max_tahun?: string) => {
+    let result = books;
+
+    if (search) {
+        const searchLower = (search as string).toLowerCase()
+        result = result.filter(p => 
+            p.judul.toLowerCase().includes(searchLower) ||
+            p.penulis.toLowerCase().includes(searchLower) ||
+            p.deskripsi?.toString().includes(searchLower)
+        );
+    }
+
+    if (min_tahun) {
+        result = result.filter(p => p.tahun >= Number(min_tahun))
+    }
+
+    if (max_tahun) {
+        result = result.filter(p => p.tahun <= Number(max_tahun))
+    }
+
+    return result
+}
+
+export const createBook = (judul: string, penulis: string, tahun: number, stok: number, deskripsi?: string) => {
+    const newBook = {
+        id: books.length + 1,
+        judul,
+        penulis,
+        tahun,
+        stok,
+        deskripsi,
+        created_at: new Date().toISOString()
+    }
+
+    books.push(newBook as Book)
+
+    return books
+}
+
+export const updateBook = (id: string, data: any) => {
+    const numId = parseInt(id)
+    const index = books.findIndex(p => p.id === numId)
+
+    if (index === -1) {
+        throw new Error("Buku ga ada!")
+    }
+
+    books[index] = { ...books[index], ...data, updated_at: new Date().toISOString() }
+
+    return books[index]
+}
+
+export const deleteBook = (id: string) => {
+    const numId = parseInt(id)
+    const index = books.findIndex(p => p.id === numId)
+
+    if (index === -1) {
+        throw new Error("Buku yang mau kamu hapus udah ga ada!")
+    }
+
+    const deleted = books.splice(index, 1)
+
+    return deleted
+}
+
+--- FILE: ./routes/book.route.ts ---
+
+import { Router } from "express";
+import { create, getAll, getById, remove, search, update } from "../controllers/book.controller";
+import { createBookValidation, getBookByIdValidation, validate } from "../middlewares/book.validation";
+
+const router = Router()
+
+router.get('/', getAll)
+router.get('/search', search)
+router.get('/:id', validate(getBookByIdValidation), getById)
+router.post('/', validate(createBookValidation), create)
+router.put('/:id', validate(createBookValidation), update)
+router.delete('/:id', validate(getBookByIdValidation), remove)
+
+export default router;
+
+--- FILE: ./routes/member.route.ts ---
+
+import { Router } from "express";
+import { create, getAll, getById, remove, search, update } from "../controllers/member.controller";
+import { createMemberValidation, getMemberByIdValidation, validate } from "../middlewares/member.validation";
+
+const router = Router()
+
+router.get('/', getAll)
+router.get('/search', search)
+router.get('/:id', validate(getMemberByIdValidation), getById)
+router.post('/', validate(createMemberValidation), create)
+router.put('/:id', validate(createMemberValidation), update)
+router.delete('/:id', validate(getMemberByIdValidation), remove)
+
+export default router
+
+--- FILE: ./models/book.model.ts ---
+
+export interface Book {
+    id: number
+    judul: string
+    penulis: string
+    tahun: number
+    stok: number
+    deskripsi?: string
+    created_at?: string
+    updated_at?: string
+}
+
+export let books: Book[] = [
+    { id: 1, judul: "Laskar Pelangi", penulis: "Andrea Hirata", tahun: 2005, stok: 10, deskripsi: "Novel tentang persahabatan dan pendidikan", created_at: "2024-01-01T00:00:00Z" },
+    { id: 2, judul: "Bumi Manusia", penulis: "Pramoedya Ananta Toer", tahun: 1980, stok: 5, deskripsi: "Novel sejarah Indonesia", created_at: "2024-01-02T00:00:00Z" },
+    { id: 3, judul: "Harry Potter and the Sorcerer's Stone", penulis: "J.K. Rowling", tahun: 1997, stok: 15, deskripsi: "Fantasi tentang penyihir muda", created_at: "2024-01-03T00:00:00Z" },
+    { id: 4, judul: "The Hobbit", penulis: "J.R.R. Tolkien", tahun: 1937, stok: 8, deskripsi: "Petualangan Bilbo Baggins", created_at: "2024-01-04T00:00:00Z" },
+    { id: 5, judul: "Dilan 1990", penulis: "Pidi Baiq", tahun: 2014, stok: 20, deskripsi: "Romance masa SMA", created_at: "2024-01-05T00:00:00Z" },
+]
+
+
+
+--- FILE: ./models/member.model.ts ---
+
+export interface Member {
+    id: number
+    nama: string
+    email: string
+    telepon: string
+    alamat?: string
+    tanggal_daftar: string
+    created_at?: string
+    updated_at?: string
+}
+
+export let members: Member[] = [
+    { id: 1, nama: "Muhammad Harits", email: "wert640559@gmail.com", telepon: "083132212944", alamat: "Jl. M. Ali No. 30", tanggal_daftar: "2025-12-06", created_at: "2025-12-06T00:00:00Z" },
+    { id: 2, nama: "Iqbal Jalaluddin", email: "iqbal@email.com", telepon: "085183071309", alamat: "Jl. Sudirman No. 2", tanggal_daftar: "2025-12-06", created_at: "2025-12-06T00:00:00Z" },
+    { id: 3, nama: "Agus Wijaya", email: "agus@email.com", telepon: "08345678901", alamat: "Jl. Thamrin No. 3", tanggal_daftar: "2024-01-03", created_at: "2024-01-03T00:00:00Z" },
+    { id: 4, nama: "Maya Sari", email: "maya@email.com", telepon: "08456789012", alamat: "Jl. Gatot Subroto No. 4", tanggal_daftar: "2024-01-04", created_at: "2024-01-04T00:00:00Z" },
+    { id: 5, nama: "Rudi Hartono", email: "rudi@email.com", telepon: "08567890123", alamat: "Jl. Diponegoro No. 5", tanggal_daftar: "2024-01-05", created_at: "2024-01-05T00:00:00Z" },
+] 
+
+
+--- FILE: ./types/express.d.ts ---
+
+import type { Request } from "express"
+
+declare global {
+    namespace Express {
+        interface Request {
+            startTime?: number;
+            apiKey?: string
+        }
+    }
+}
+
+--- FILE: ./middlewares/error.handler.ts ---
+
+import type { NextFunction, Request, Response } from "express";
+import { errorResponse } from "../utils/response";
+
+export const errorHandler = (err: Error, _req: Request, res: Response, _next: NextFunction) => {
+    console.error('ERROR:', err.message);
+
+    const statusCode = err.message.includes('tidak ditemukan') ? 404 : 400;
+
+    errorResponse(
+        res,
+        err.message || 'Terjadi kesalahan server',
+        statusCode,
+        process.env.NODE_ENV === 'development' ? { stack: err.stack } as { stack?: string } : null
+    )
+}
+
+--- FILE: ./middlewares/book.validation.ts ---
+
+import type { NextFunction, Request, Response } from "express";
+import { body, param, validationResult, type ValidationChain } from "express-validator";
+import { errorResponse } from "../utils/response";
+
+export const validate = (validations: ValidationChain[]) => {
+    return async (req: Request, res: Response, next: NextFunction) => {
+        await Promise.all(validations.map(validation => validation.run(req)))
+
+        const errors = validationResult(req)
+        if (errors.isEmpty()) {
+            return next()
+        }
+
+        const errorList = errors.array().map(err => ({
+            field: err.type === 'field' ? err.path : 'unknown',
+            message: err.msg
+        }))
+
+        return errorResponse(res, "Validasi gak berhasil", 400, errorList)
+    } 
+}
+
+export const createBookValidation = [
+    body('judul')
+        .trim()
+        .notEmpty().withMessage('Judul harus diisi')
+        .isLength({ min: 3 }).withMessage('Nama Buku minimal 3 karakter'),
+
+     body('penulis')
+        .trim()
+        .notEmpty().withMessage('Penulis wajib diisi')
+        .isLength({ min: 3 }).withMessage('Penulis minimal 3 karakter'),
+
+    body('tahun')
+        .isNumeric().withMessage('Tahun harus angka')
+        .custom(value => value > 0).withMessage('Tahun harus lebih dari 0')
+        .custom(value => value <= new Date().getFullYear()).withMessage('Tahun tidak boleh melebihi tahun sekarang'),
+
+    body('stok')
+        .isNumeric().withMessage('Stok harus angka')
+        .custom(value => value >= 0).withMessage('Stok tidak boleh negatif')
+]
+
+export const getBookByIdValidation = [
+    param('id')
+        .isNumeric().withMessage('Id harus angka')
+]
+
+--- FILE: ./middlewares/member.validation.ts ---
+
+import type { NextFunction, Request, Response } from "express";
+import { body, param, validationResult, type ValidationChain } from "express-validator";
+import { errorResponse } from "../utils/response";
+
+export const validate = (validations: ValidationChain[]) => {
+    return async (req: Request, res: Response, next: NextFunction) => {
+        await Promise.all(validations.map(validation => validation.run(req)))
+
+        const errors = validationResult(req)
+        if (errors.isEmpty()) {
+            return next()
+        }
+
+        const errorList = errors.array().map(err => ({
+            field: err.type === 'field' ? err.path : 'unknown',
+            message: err.msg 
+        }))
+
+        return errorResponse(res, "Validasi tidak berhasil", 400, errorList)
+    }
+}
+
+export const createMemberValidation = [
+    body('nama')
+        .trim()
+        .notEmpty().withMessage('Nama harus diisi')
+        .isLength({ min: 3 }).withMessage('Nama minimal 3 karakter'),
+
+    body('email')
+        .trim()
+        .notEmpty().withMessage('Email wajib diisi')
+        .isEmail().withMessage('Format email tidak valid'),
+
+    body('telepon')
+        .trim()
+        .notEmpty().withMessage('Telepon wajib diisi')
+        .matches(/^[0-9]+$/).withMessage('Telepon harus angka')
+        .isLength({ min: 10, max: 13 }).withMessage('Telepon harus 10-13 digit'),
+
+    body('tanggal_daftar')
+        .optional()
+        .isDate().withMessage('Format tanggal tidak valid (YYYY-MM-DD)')
+]
+
+export const getMemberByIdValidation = [
+    param('id')
+        .isNumeric().withMessage('Id harus angka')
+        .custom(value => parseInt(value) > 0).withMessage('Id harus lebih dari 0')
+]
+
+--- FILE: ./middlewares/custom.middleware.ts ---
+
+import type { NextFunction, Request, Response } from "express";
+
+export const requestIdMiddleware = (req: Request, _res: Response, next: NextFunction ) => {
+    const requestId = req.headers['x-request-id'] || `req-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`
+    req.headers['x-request-id'] = requestId
+    next()
+}
+
+export const timingMiddleware = (req: Request, _res: Response, next: NextFunction) => {
+    console.log(`Request masuk: ${req.method} ${req.path}`)
+    req.startTime = Date.now()
+    next()
+}
+
+export const apiKeyMiddleware = (req: Request, res: Response, next: NextFunction) => {
+    const apiKey = req.headers['x-api-key']
+
+    if (!apiKey) {
+        return res.status(401).json({
+            success: false,
+            message: "Header X-API-Key wajib diisi untuk akses API!"
+        })
+    }
+
+    if (apiKey !== 'admin1234') {
+        return res.status(401).json({
+            success: false,
+            message: "API Key tidak valid!"
+        })
+    }
+
+    next()
+}
+
+--- FILE: ./utils/async.handler.ts ---
+
+import type { NextFunction, Request, Response } from "express";
+
+export const asyncHandler = (fn: Function) => {
+    return (req: Request, res: Response, next: NextFunction) => {
+        Promise.resolve(fn(req, res, next)).catch(next);
+    }
+}
+
+--- FILE: ./utils/response.ts ---
+
+import type { Response } from "express";
+
+export interface ApiResponse {
+    success: boolean;
+    message: string;
+    data?: unknown;
+    pagination?: {
+        page: number;
+        limit: number;
+        total: number;
+    };
+    errors?: Array<{
+        field: string;
+        message: string;
+    }> | { stack?: string };
+}
+
+export const successResponse = (
+    res: Response,
+    message: string,
+    data: unknown | null,
+    pagination: { page: number; limit: number; total: number } | null = null,
+    statusCode: number = 200
+) => {
+    const response: ApiResponse = {
+        success: true, 
+        message
+    }
+
+    if (data) response.data = data
+    if (pagination) response.pagination = pagination
+
+    return res.status(statusCode).json(response)
+}
+
+export const errorResponse = (
+    res: Response,
+    message: string,
+    statusCode: number = 400,
+    errors: Array<{ field: string; message: string }> | { stack?: string } | null = null
+) => {
+    const response: ApiResponse = {
+        success: false,
+        message,
+    }
+
+    if (errors) response.errors = errors;
+
+    return res.status(statusCode).json(response);
+}
+
+
+
+--- FILE: ./utils/env.ts ---
+
+import dotenv from 'dotenv'
+
+dotenv.config()
+
+export default {
+    HOST: process.env.HOST,
+    PORT: process.env.PORT,
+    NODE_ENV: process.env.NODE_ENV,
+} as const
+
+--- FILE: ./app.ts ---
+
+import express, { type Application, type Request, type Response } from "express";
+import helmet from "helmet";
+import cors from "cors"
+import morgan from "morgan";
+import { successResponse } from "./utils/response";
+import bookRouter from "./routes/book.route";
+import memberRouter from "./routes/member.route";
+import { errorHandler } from "./middlewares/error.handler";
+import { apiKeyMiddleware, requestIdMiddleware, timingMiddleware } from "./middlewares/custom.middleware";
+
+const app: Application = express()
+
+app.use(helmet())
+app.use(cors())
+app.use(morgan('dev'))
+app.use(express.json())
+
+app.use(requestIdMiddleware)
+app.use(timingMiddleware)
+
+app.use(apiKeyMiddleware)
+
+app.get('/', (_req: Request, res: Response) => {
+    successResponse(
+        res,
+        "Selamat datang di API Perpustakaan",
+        {
+            name: "Perpustakaan Api",
+            status: "Online"
+        }
+    )
+})
+
+app.use('/api/books', bookRouter)
+app.use('/api/members', memberRouter)
+
+app.get(/.*/, (req: Request, _res: Response) => {
+    throw new Error(`Route ${req.method} ${req.path} tidak ditemukan di API Perpustakaan!`);
+})
+
+app.use(errorHandler)
+
+export default app;
+
+--- FILE: ./index.ts ---
+
+import app from "./app";
+import config from './utils/env'
+
+app.listen(config.PORT, () => {
+    console.log(`Server running at ${config.HOST}:${config.PORT}`)
+})
+
+--- FILE: ./src.txt ---
+
