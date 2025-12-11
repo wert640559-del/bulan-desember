@@ -50,8 +50,8 @@ export const createProduct = async (data: {name: string, description?: string, p
             description: data.description ?? null,
             price: data.price,
             stock: data.stock,
-            categoryId: data.categoryId ?? null,
-        },
+            categoryId: data.categoryId ?? null
+        }
     })
 }
 

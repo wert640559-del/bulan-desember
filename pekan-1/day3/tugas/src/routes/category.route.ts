@@ -1,10 +1,14 @@
-import { Router } from "express";
-import * as category from '../controllers/category.controller'
+import { Router } from "express"
+import { createCategoryValidation, getCategoryByIdValidation } from "../middlewares/category.validation"
+import { validate } from "../utils/validator"
+import * as categoryController from '../controllers/category.controller'
 
 const router = Router()
 
-router.get('/category/', category.getAll)
-router.get('/category/:id', category.getById)
-router.post('/category', category.create)
+router.get('/', categoryController.getAll)
+router.get('/:id', validate(getCategoryByIdValidation), categoryController.getById)
+router.post('/', validate(createCategoryValidation), categoryController.create)
+router.put('/:id', categoryController.update)
+router.delete('/:id', categoryController.remove)
 
-export default router;
+export default router
