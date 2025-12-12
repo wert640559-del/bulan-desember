@@ -8,6 +8,7 @@ import helmet from 'helmet'
 import cors from 'cors'
 import { successResponse } from './utils/response'
 import productRouter from './routes/product.route'
+import categoryRouter from './routes/category.route'
 import { errorHandler } from './middlewares/error.handler'
 
 const app: Application = express()
@@ -54,6 +55,7 @@ app.get('/', (_req: Request, res: Response) => {
 })
 
 app.use('/api/products', productRouter)
+app.use('/api/categories', categoryRouter)
 
 app.get(/.*/, (req: Request, _res: Response) => {
     throw new Error(`Route ${req.originalUrl} tidak ada di API E-Commerce`);
@@ -114,7 +116,7 @@ export const create = async (req: Request, res: Response) => {
         name: String(name), 
         price: Number(price), 
         stock: Number(stock),
-        categoryId: Number(categoryId)
+        categoryId: Number(categoryId),
         ...(description && { description: description })
     }
 
@@ -153,34 +155,27 @@ export const remove = async (req: Request, res: Response) => {
 
 import type { Request, Response } from "express"
 import { successResponse } from "../utils/response"
-import { createCategory, getAllCategories, getCategoryById } from "../services/category.service"
+import { 
+    createCategory, 
+    deleteCategory, 
+    getAllCategories, 
+    getCategoryById, 
+    updateCategory 
+} from "../services/category.service"
+
 export const getAll = async (_req: Request, res: Response) => {
     const categories = await getAllCategories()
 
     successResponse(
         res,
         "Kategori berhasil diambil",
-        categories,
-        null,
-        200
-    )
-}
-
-export const create = async (req: Request, res: Response) => {
-    const category = await createCategory(req.body.name)
-
-    successResponse(
-        res,
-        "kategori berhasil dibuat",
-        category,
-        null,
-        201
+        categories
     )
 }
 
 export const getById = async (req: Request, res: Response) => {
     if (!req.params.id) {
-        throw new Error("Paramnya gk ada wok")
+        throw new Error("Parameter id tidak ada")
     }
 
     const category = await getCategoryById(req.params.id)
@@ -192,18 +187,51 @@ export const getById = async (req: Request, res: Response) => {
     )
 }
 
-export const update = async (_req: Request, res: Response) => {
-    const category = updateCategory(_req.params.id!, _req.body)
+export const create = async (req: Request, res: Response) => {
+    const { name } = req.body
+    
+    if (!name) {
+        throw new Error("Nama kategori wajib diisi")
+    }
+
+    const category = await createCategory(String(name))
+
+    successResponse(
+        res,
+        "Kategori berhasil dibuat",
+        category,
+        null,
+        201
+    )
+}
+
+export const update = async (req: Request, res: Response) => {
+    if (!req.params.id) {
+        throw new Error("Parameter id tidak ada")
+    }
+
+    const category = await updateCategory(req.params.id, req.body)
 
     successResponse(
         res,
         "Kategori berhasil diupdate",
-        category,
-        null,
-        200
+        category
     )
 }
 
+export const remove = async (req: Request, res: Response) => {
+    if (!req.params.id) {
+        throw new Error("Parameter id tidak ada")
+    }
+
+    const deleted = await deleteCategory(req.params.id)
+
+    successResponse(
+        res,
+        "Kategori berhasil dihapus",
+        deleted
+    )
+}
 
 --- FILE: ./index.ts ---
 
@@ -218,11 +246,32 @@ app.listen(config.PORT, () => {
 
 import type { NextFunction, Request, Response } from "express";
 import { errorResponse } from "../utils/response";
+import { Prisma } from "../generated/client";
 
 export const errorHandler = (err: Error, _req: Request, res: Response, _next: NextFunction) => {
     console.error('ERROR:', err.message);
 
     const statusCode = err.message.includes('tidak ditemukan') ? 404 : 400;
+
+    if (err instanceof Prisma.PrismaClientKnownRequestError) {
+        if (err.code === 'P2002') {
+            errorResponse(
+                res,
+                `Data sudah ada (Unique constraint violation) /n${err.message}`,
+                statusCode,
+                process.env.NODE_ENV === 'development' ? { stack: err.stack } as { stack?: string } : null 
+            )
+        }
+
+        if (err.code === 'P2025') {
+            errorResponse(
+                res,
+                `Data tidak ditemukan \n${err.message}`,
+                statusCode,
+                process.env.NODE_ENV === 'development' ? { stack: err.stack } as { stack: string } : null
+            )
+        }
+    }
 
     errorResponse(
         res,
@@ -260,6 +309,22 @@ export const getProductByIdValidation = [
         .isNumeric().withMessage('ID harus angka')
 ]
 
+--- FILE: ./middlewares/category.validation.ts ---
+
+import { body, param } from "express-validator"
+
+export const createCategoryValidation = [
+    body('name')
+        .trim()
+        .notEmpty().withMessage('Nama kategori wajib diisi')
+        .isLength({ min: 3 }).withMessage('Nama kategori minimal 3 karakter')
+]
+
+export const getCategoryByIdValidation = [
+    param('id')
+        .isNumeric().withMessage('ID harus angka')
+]
+
 --- FILE: ./routes/product.route.ts ---
 
 import { Router } from "express"
@@ -280,16 +345,20 @@ export default router
 
 --- FILE: ./routes/category.route.ts ---
 
-import { Router } from "express";
-import * as category from '../controllers/category.controller'
+import { Router } from "express"
+import { createCategoryValidation, getCategoryByIdValidation } from "../middlewares/category.validation"
+import { validate } from "../utils/validator"
+import * as categoryController from '../controllers/category.controller'
 
 const router = Router()
 
-router.get('/category/', category.getAll)
-router.get('/category/:id', category.getById)
-router.post('/category', category.create)
+router.get('/', categoryController.getAll)
+router.get('/:id', validate(getCategoryByIdValidation), categoryController.getById)
+router.post('/', validate(createCategoryValidation), categoryController.create)
+router.put('/:id', categoryController.update)
+router.delete('/:id', categoryController.remove)
 
-export default router;
+export default router
 
 --- FILE: ./services/product.service.ts ---
 
@@ -300,7 +369,11 @@ const prisma = getPrisma();
 
 
 export const getAllProducts = async (): Promise<{products: Product[], total: number}> => {
-    const products = await prisma.product.findMany({ include: { category: true }})
+    const products = await prisma.product.findMany({ 
+        include: { category: true },
+        where: { deletedAt: null }
+    })
+
     const total = products.length
 
     return { products, total }
@@ -310,7 +383,10 @@ export const getProductById = async (id: string): Promise<Product> => {
     const numId = parseInt(id)
 
     const product = await prisma.product.findUnique({
-        where: { id: numId},
+        where: {
+            id: numId,
+            deletedAt: null
+        },
         include: { category: true }
     })
 
@@ -333,8 +409,9 @@ export const searchProducts = async (name?: string, min_price?: number, max_pric
                 ...(min_price && { gte: min_price }),
                 ...(max_price && { lte: max_price})
             },
-            include: { category: true }
-        }
+            deletedAt: null
+        },
+        include: {category: true}
     })
 }
 
@@ -345,7 +422,7 @@ export const createProduct = async (data: {name: string, description?: string, p
             description: data.description ?? null,
             price: data.price,
             stock: data.stock,
-            categoryId: data.categoryId ?? null,
+            categoryId: data.categoryId ?? null
         },
     })
 }
@@ -356,7 +433,10 @@ export const updateProduct = async (id: string, data: Partial<Product>): Promise
     const numId = parseInt(id)
 
     return await prisma.product.update({
-        where: { id: numId },
+        where: { 
+            id: numId,
+            deletedAt: null
+        },
         data
     })
 }
@@ -366,34 +446,68 @@ export const deleteProduct = async (id: string): Promise<Product> => {
 
     const numId = parseInt(id)
     
-    return await prisma.product.delete({
+    return await prisma.product.update({
         where: { id: numId },
+        data: { deletedAt: new Date() }
     })
 }
 
 --- FILE: ./services/category.service.ts ---
 
+import type { Category } from "../generated/client"
 import { getPrisma } from "../prisma"
 
 const prisma = getPrisma()
 
-export const getAllCategories = async () => {
-    return await prisma.category.findMany()
-}
-
-export const getCategoryById = async (id: string) => {
-    const numId = parseInt(id)
-
-    return await prisma.category.findUnique({
-        where: { id: numId }
+export const getAllCategories = async (): Promise<Category[]> => {
+    return await prisma.category.findMany({
+        include: { products: true }
     })
 }
 
-export const createCategory = async (name: string) => {
-    const isExist = await prisma.category.findUnique({ where: { name }})
+export const getCategoryById = async (id: string): Promise<Category> => {
+    const numId = parseInt(id)
+
+    const category = await prisma.category.findUnique({
+        where: { id: numId },
+        include: { products: true }
+    })
+
+    if (!category) {
+        throw new Error("Kategori tidak ditemukan")
+    }
+
+    return category
+}
+
+export const createCategory = async (name: string): Promise<Category> => {
+    const isExist = await prisma.category.findUnique({ where: { name } })
     if (isExist) throw new Error("Nama kategori sudah ada")
 
-    return await prisma.category.create({ data: { name }})
+    return await prisma.category.create({ 
+        data: { name }
+    })
+}
+
+export const updateCategory = async (id: string, data: Partial<Category>): Promise<Category> => {
+    await getCategoryById(id)
+
+    const numId = parseInt(id)
+
+    return await prisma.category.update({
+        where: { id: numId },
+        data
+    })
+}
+
+export const deleteCategory = async (id: string): Promise<Category> => {
+    await getCategoryById(id)
+
+    const numId = parseInt(id)
+    
+    return await prisma.category.delete({
+        where: { id: numId }
+    })
 }
 
 --- FILE: ./types/express.d.ts ---
@@ -543,6 +657,7 @@ model Product {
 
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  deletedAt   DateTime?
 
   @@map("products")
 }
@@ -602,6 +717,12 @@ CREATE UNIQUE INDEX "categories_name_key" ON "categories"("name");
 
 -- AddForeignKey
 ALTER TABLE "products" ADD CONSTRAINT "products_categoryId_fkey" FOREIGN KEY ("categoryId") REFERENCES "categories"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+
+--- FILE: ./prisma/migrations/20251212014240/migration.sql ---
+
+-- AlterTable
+ALTER TABLE "products" ADD COLUMN     "deletedAt" TIMESTAMP(3);
 
 
 --- FILE: ./generated/client.ts ---
@@ -851,6 +972,17 @@ export type IntNullableFilter<$PrismaModel = never> = {
   not?: Prisma.NestedIntNullableFilter<$PrismaModel> | number | null
 }
 
+export type DateTimeNullableFilter<$PrismaModel = never> = {
+  equals?: Date | string | Prisma.DateTimeFieldRefInput<$PrismaModel> | null
+  in?: Date[] | string[] | Prisma.ListDateTimeFieldRefInput<$PrismaModel> | null
+  notIn?: Date[] | string[] | Prisma.ListDateTimeFieldRefInput<$PrismaModel> | null
+  lt?: Date | string | Prisma.DateTimeFieldRefInput<$PrismaModel>
+  lte?: Date | string | Prisma.DateTimeFieldRefInput<$PrismaModel>
+  gt?: Date | string | Prisma.DateTimeFieldRefInput<$PrismaModel>
+  gte?: Date | string | Prisma.DateTimeFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedDateTimeNullableFilter<$PrismaModel> | Date | string | null
+}
+
 export type SortOrderInput = {
   sort: Prisma.SortOrder
   nulls?: Prisma.NullsOrder
@@ -904,6 +1036,20 @@ export type IntNullableWithAggregatesFilter<$PrismaModel = never> = {
   _sum?: Prisma.NestedIntNullableFilter<$PrismaModel>
   _min?: Prisma.NestedIntNullableFilter<$PrismaModel>
   _max?: Prisma.NestedIntNullableFilter<$PrismaModel>
+}
+
+export type DateTimeNullableWithAggregatesFilter<$PrismaModel = never> = {
+  equals?: Date | string | Prisma.DateTimeFieldRefInput<$PrismaModel> | null
+  in?: Date[] | string[] | Prisma.ListDateTimeFieldRefInput<$PrismaModel> | null
+  notIn?: Date[] | string[] | Prisma.ListDateTimeFieldRefInput<$PrismaModel> | null
+  lt?: Date | string | Prisma.DateTimeFieldRefInput<$PrismaModel>
+  lte?: Date | string | Prisma.DateTimeFieldRefInput<$PrismaModel>
+  gt?: Date | string | Prisma.DateTimeFieldRefInput<$PrismaModel>
+  gte?: Date | string | Prisma.DateTimeFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedDateTimeNullableWithAggregatesFilter<$PrismaModel> | Date | string | null
+  _count?: Prisma.NestedIntNullableFilter<$PrismaModel>
+  _min?: Prisma.NestedDateTimeNullableFilter<$PrismaModel>
+  _max?: Prisma.NestedDateTimeNullableFilter<$PrismaModel>
 }
 
 export type NestedIntFilter<$PrismaModel = never> = {
@@ -1036,6 +1182,17 @@ export type NestedIntNullableFilter<$PrismaModel = never> = {
   not?: Prisma.NestedIntNullableFilter<$PrismaModel> | number | null
 }
 
+export type NestedDateTimeNullableFilter<$PrismaModel = never> = {
+  equals?: Date | string | Prisma.DateTimeFieldRefInput<$PrismaModel> | null
+  in?: Date[] | string[] | Prisma.ListDateTimeFieldRefInput<$PrismaModel> | null
+  notIn?: Date[] | string[] | Prisma.ListDateTimeFieldRefInput<$PrismaModel> | null
+  lt?: Date | string | Prisma.DateTimeFieldRefInput<$PrismaModel>
+  lte?: Date | string | Prisma.DateTimeFieldRefInput<$PrismaModel>
+  gt?: Date | string | Prisma.DateTimeFieldRefInput<$PrismaModel>
+  gte?: Date | string | Prisma.DateTimeFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedDateTimeNullableFilter<$PrismaModel> | Date | string | null
+}
+
 export type NestedStringNullableWithAggregatesFilter<$PrismaModel = never> = {
   equals?: string | Prisma.StringFieldRefInput<$PrismaModel> | null
   in?: string[] | Prisma.ListStringFieldRefInput<$PrismaModel> | null
@@ -1094,6 +1251,20 @@ export type NestedFloatNullableFilter<$PrismaModel = never> = {
   gt?: number | Prisma.FloatFieldRefInput<$PrismaModel>
   gte?: number | Prisma.FloatFieldRefInput<$PrismaModel>
   not?: Prisma.NestedFloatNullableFilter<$PrismaModel> | number | null
+}
+
+export type NestedDateTimeNullableWithAggregatesFilter<$PrismaModel = never> = {
+  equals?: Date | string | Prisma.DateTimeFieldRefInput<$PrismaModel> | null
+  in?: Date[] | string[] | Prisma.ListDateTimeFieldRefInput<$PrismaModel> | null
+  notIn?: Date[] | string[] | Prisma.ListDateTimeFieldRefInput<$PrismaModel> | null
+  lt?: Date | string | Prisma.DateTimeFieldRefInput<$PrismaModel>
+  lte?: Date | string | Prisma.DateTimeFieldRefInput<$PrismaModel>
+  gt?: Date | string | Prisma.DateTimeFieldRefInput<$PrismaModel>
+  gte?: Date | string | Prisma.DateTimeFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedDateTimeNullableWithAggregatesFilter<$PrismaModel> | Date | string | null
+  _count?: Prisma.NestedIntNullableFilter<$PrismaModel>
+  _min?: Prisma.NestedDateTimeNullableFilter<$PrismaModel>
+  _max?: Prisma.NestedDateTimeNullableFilter<$PrismaModel>
 }
 
 
@@ -2519,6 +2690,7 @@ export type ProductMinAggregateOutputType = {
   categoryId: number | null
   createdAt: Date | null
   updatedAt: Date | null
+  deletedAt: Date | null
 }
 
 export type ProductMaxAggregateOutputType = {
@@ -2530,6 +2702,7 @@ export type ProductMaxAggregateOutputType = {
   categoryId: number | null
   createdAt: Date | null
   updatedAt: Date | null
+  deletedAt: Date | null
 }
 
 export type ProductCountAggregateOutputType = {
@@ -2541,6 +2714,7 @@ export type ProductCountAggregateOutputType = {
   categoryId: number
   createdAt: number
   updatedAt: number
+  deletedAt: number
   _all: number
 }
 
@@ -2568,6 +2742,7 @@ export type ProductMinAggregateInputType = {
   categoryId?: true
   createdAt?: true
   updatedAt?: true
+  deletedAt?: true
 }
 
 export type ProductMaxAggregateInputType = {
@@ -2579,6 +2754,7 @@ export type ProductMaxAggregateInputType = {
   categoryId?: true
   createdAt?: true
   updatedAt?: true
+  deletedAt?: true
 }
 
 export type ProductCountAggregateInputType = {
@@ -2590,6 +2766,7 @@ export type ProductCountAggregateInputType = {
   categoryId?: true
   createdAt?: true
   updatedAt?: true
+  deletedAt?: true
   _all?: true
 }
 
@@ -2688,6 +2865,7 @@ export type ProductGroupByOutputType = {
   categoryId: number | null
   createdAt: Date
   updatedAt: Date
+  deletedAt: Date | null
   _count: ProductCountAggregateOutputType | null
   _avg: ProductAvgAggregateOutputType | null
   _sum: ProductSumAggregateOutputType | null
@@ -2722,6 +2900,7 @@ export type ProductWhereInput = {
   categoryId?: Prisma.IntNullableFilter<"Product"> | number | null
   createdAt?: Prisma.DateTimeFilter<"Product"> | Date | string
   updatedAt?: Prisma.DateTimeFilter<"Product"> | Date | string
+  deletedAt?: Prisma.DateTimeNullableFilter<"Product"> | Date | string | null
   category?: Prisma.XOR<Prisma.CategoryNullableScalarRelationFilter, Prisma.CategoryWhereInput> | null
 }
 
@@ -2734,6 +2913,7 @@ export type ProductOrderByWithRelationInput = {
   categoryId?: Prisma.SortOrderInput | Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
+  deletedAt?: Prisma.SortOrderInput | Prisma.SortOrder
   category?: Prisma.CategoryOrderByWithRelationInput
 }
 
@@ -2749,6 +2929,7 @@ export type ProductWhereUniqueInput = Prisma.AtLeast<{
   categoryId?: Prisma.IntNullableFilter<"Product"> | number | null
   createdAt?: Prisma.DateTimeFilter<"Product"> | Date | string
   updatedAt?: Prisma.DateTimeFilter<"Product"> | Date | string
+  deletedAt?: Prisma.DateTimeNullableFilter<"Product"> | Date | string | null
   category?: Prisma.XOR<Prisma.CategoryNullableScalarRelationFilter, Prisma.CategoryWhereInput> | null
 }, "id">
 
@@ -2761,6 +2942,7 @@ export type ProductOrderByWithAggregationInput = {
   categoryId?: Prisma.SortOrderInput | Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
+  deletedAt?: Prisma.SortOrderInput | Prisma.SortOrder
   _count?: Prisma.ProductCountOrderByAggregateInput
   _avg?: Prisma.ProductAvgOrderByAggregateInput
   _max?: Prisma.ProductMaxOrderByAggregateInput
@@ -2780,6 +2962,7 @@ export type ProductScalarWhereWithAggregatesInput = {
   categoryId?: Prisma.IntNullableWithAggregatesFilter<"Product"> | number | null
   createdAt?: Prisma.DateTimeWithAggregatesFilter<"Product"> | Date | string
   updatedAt?: Prisma.DateTimeWithAggregatesFilter<"Product"> | Date | string
+  deletedAt?: Prisma.DateTimeNullableWithAggregatesFilter<"Product"> | Date | string | null
 }
 
 export type ProductCreateInput = {
@@ -2789,6 +2972,7 @@ export type ProductCreateInput = {
   stock?: number
   createdAt?: Date | string
   updatedAt?: Date | string
+  deletedAt?: Date | string | null
   category?: Prisma.CategoryCreateNestedOneWithoutProductsInput
 }
 
@@ -2801,6 +2985,7 @@ export type ProductUncheckedCreateInput = {
   categoryId?: number | null
   createdAt?: Date | string
   updatedAt?: Date | string
+  deletedAt?: Date | string | null
 }
 
 export type ProductUpdateInput = {
@@ -2810,6 +2995,7 @@ export type ProductUpdateInput = {
   stock?: Prisma.IntFieldUpdateOperationsInput | number
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  deletedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   category?: Prisma.CategoryUpdateOneWithoutProductsNestedInput
 }
 
@@ -2822,6 +3008,7 @@ export type ProductUncheckedUpdateInput = {
   categoryId?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  deletedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
 }
 
 export type ProductCreateManyInput = {
@@ -2833,6 +3020,7 @@ export type ProductCreateManyInput = {
   categoryId?: number | null
   createdAt?: Date | string
   updatedAt?: Date | string
+  deletedAt?: Date | string | null
 }
 
 export type ProductUpdateManyMutationInput = {
@@ -2842,6 +3030,7 @@ export type ProductUpdateManyMutationInput = {
   stock?: Prisma.IntFieldUpdateOperationsInput | number
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  deletedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
 }
 
 export type ProductUncheckedUpdateManyInput = {
@@ -2853,6 +3042,7 @@ export type ProductUncheckedUpdateManyInput = {
   categoryId?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  deletedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
 }
 
 export type ProductListRelationFilter = {
@@ -2874,6 +3064,7 @@ export type ProductCountOrderByAggregateInput = {
   categoryId?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
+  deletedAt?: Prisma.SortOrder
 }
 
 export type ProductAvgOrderByAggregateInput = {
@@ -2892,6 +3083,7 @@ export type ProductMaxOrderByAggregateInput = {
   categoryId?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
+  deletedAt?: Prisma.SortOrder
 }
 
 export type ProductMinOrderByAggregateInput = {
@@ -2903,6 +3095,7 @@ export type ProductMinOrderByAggregateInput = {
   categoryId?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
+  deletedAt?: Prisma.SortOrder
 }
 
 export type ProductSumOrderByAggregateInput = {
@@ -2966,6 +3159,10 @@ export type DecimalFieldUpdateOperationsInput = {
   divide?: runtime.Decimal | runtime.DecimalJsLike | number | string
 }
 
+export type NullableDateTimeFieldUpdateOperationsInput = {
+  set?: Date | string | null
+}
+
 export type NullableIntFieldUpdateOperationsInput = {
   set?: number | null
   increment?: number
@@ -2981,6 +3178,7 @@ export type ProductCreateWithoutCategoryInput = {
   stock?: number
   createdAt?: Date | string
   updatedAt?: Date | string
+  deletedAt?: Date | string | null
 }
 
 export type ProductUncheckedCreateWithoutCategoryInput = {
@@ -2991,6 +3189,7 @@ export type ProductUncheckedCreateWithoutCategoryInput = {
   stock?: number
   createdAt?: Date | string
   updatedAt?: Date | string
+  deletedAt?: Date | string | null
 }
 
 export type ProductCreateOrConnectWithoutCategoryInput = {
@@ -3031,6 +3230,7 @@ export type ProductScalarWhereInput = {
   categoryId?: Prisma.IntNullableFilter<"Product"> | number | null
   createdAt?: Prisma.DateTimeFilter<"Product"> | Date | string
   updatedAt?: Prisma.DateTimeFilter<"Product"> | Date | string
+  deletedAt?: Prisma.DateTimeNullableFilter<"Product"> | Date | string | null
 }
 
 export type ProductCreateManyCategoryInput = {
@@ -3041,6 +3241,7 @@ export type ProductCreateManyCategoryInput = {
   stock?: number
   createdAt?: Date | string
   updatedAt?: Date | string
+  deletedAt?: Date | string | null
 }
 
 export type ProductUpdateWithoutCategoryInput = {
@@ -3050,6 +3251,7 @@ export type ProductUpdateWithoutCategoryInput = {
   stock?: Prisma.IntFieldUpdateOperationsInput | number
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  deletedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
 }
 
 export type ProductUncheckedUpdateWithoutCategoryInput = {
@@ -3060,6 +3262,7 @@ export type ProductUncheckedUpdateWithoutCategoryInput = {
   stock?: Prisma.IntFieldUpdateOperationsInput | number
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  deletedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
 }
 
 export type ProductUncheckedUpdateManyWithoutCategoryInput = {
@@ -3070,6 +3273,7 @@ export type ProductUncheckedUpdateManyWithoutCategoryInput = {
   stock?: Prisma.IntFieldUpdateOperationsInput | number
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  deletedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
 }
 
 
@@ -3083,6 +3287,7 @@ export type ProductSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs 
   categoryId?: boolean
   createdAt?: boolean
   updatedAt?: boolean
+  deletedAt?: boolean
   category?: boolean | Prisma.Product$categoryArgs<ExtArgs>
 }, ExtArgs["result"]["product"]>
 
@@ -3095,6 +3300,7 @@ export type ProductSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Exten
   categoryId?: boolean
   createdAt?: boolean
   updatedAt?: boolean
+  deletedAt?: boolean
   category?: boolean | Prisma.Product$categoryArgs<ExtArgs>
 }, ExtArgs["result"]["product"]>
 
@@ -3107,6 +3313,7 @@ export type ProductSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Exten
   categoryId?: boolean
   createdAt?: boolean
   updatedAt?: boolean
+  deletedAt?: boolean
   category?: boolean | Prisma.Product$categoryArgs<ExtArgs>
 }, ExtArgs["result"]["product"]>
 
@@ -3119,9 +3326,10 @@ export type ProductSelectScalar = {
   categoryId?: boolean
   createdAt?: boolean
   updatedAt?: boolean
+  deletedAt?: boolean
 }
 
-export type ProductOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "name" | "description" | "price" | "stock" | "categoryId" | "createdAt" | "updatedAt", ExtArgs["result"]["product"]>
+export type ProductOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "name" | "description" | "price" | "stock" | "categoryId" | "createdAt" | "updatedAt" | "deletedAt", ExtArgs["result"]["product"]>
 export type ProductInclude<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   category?: boolean | Prisma.Product$categoryArgs<ExtArgs>
 }
@@ -3146,6 +3354,7 @@ export type $ProductPayload<ExtArgs extends runtime.Types.Extensions.InternalArg
     categoryId: number | null
     createdAt: Date
     updatedAt: Date
+    deletedAt: Date | null
   }, ExtArgs["result"]["product"]>
   composites: {}
 }
@@ -3578,6 +3787,7 @@ export interface ProductFieldRefs {
   readonly categoryId: Prisma.FieldRef<"Product", 'Int'>
   readonly createdAt: Prisma.FieldRef<"Product", 'DateTime'>
   readonly updatedAt: Prisma.FieldRef<"Product", 'DateTime'>
+  readonly deletedAt: Prisma.FieldRef<"Product", 'DateTime'>
 }
     
 
@@ -4625,7 +4835,8 @@ export const ProductScalarFieldEnum = {
   stock: 'stock',
   categoryId: 'categoryId',
   createdAt: 'createdAt',
-  updatedAt: 'updatedAt'
+  updatedAt: 'updatedAt',
+  deletedAt: 'deletedAt'
 } as const
 
 export type ProductScalarFieldEnum = (typeof ProductScalarFieldEnum)[keyof typeof ProductScalarFieldEnum]
@@ -4985,7 +5196,8 @@ export const ProductScalarFieldEnum = {
   stock: 'stock',
   categoryId: 'categoryId',
   createdAt: 'createdAt',
-  updatedAt: 'updatedAt'
+  updatedAt: 'updatedAt',
+  deletedAt: 'deletedAt'
 } as const
 
 export type ProductScalarFieldEnum = (typeof ProductScalarFieldEnum)[keyof typeof ProductScalarFieldEnum]
@@ -5040,7 +5252,7 @@ const config: runtime.GetPrismaClientConfig = {
   "clientVersion": "7.1.0",
   "engineVersion": "ab635e6b9d606fa5c8fb8b1a7f909c3c3c1c98ba",
   "activeProvider": "postgresql",
-  "inlineSchema": "model Category {\n  id        Int       @id @default(autoincrement())\n  name      String    @unique\n  products  Product[] // Relasi balik: 1 Kategori -> Banyak Produk\n  createdAt DateTime  @default(now())\n  updatedAt DateTime  @updatedAt\n\n  @@map(\"categories\")\n}\n\nmodel Product {\n  id          Int     @id @default(autoincrement())\n  name        String\n  description String?\n  price       Decimal @db.Decimal(10, 2)\n  stock       Int     @default(0)\n\n  // === TAMBAHAN RELASI ===\n  categoryId Int? // Foreign Key\n  category   Category? @relation(fields: [categoryId], references: [id])\n  // =======================\n\n  createdAt DateTime @default(now())\n  updatedAt DateTime @updatedAt\n\n  @@map(\"products\")\n}\n\n// This is your Prisma schema file,\n// learn more about it in the docs: https://pris.ly/d/prisma-schema\n\n// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?\n// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init\n\ngenerator client {\n  provider = \"prisma-client\"\n  output   = \"../generated\"\n}\n\ndatasource db {\n  provider = \"postgresql\"\n}\n",
+  "inlineSchema": "model Category {\n  id        Int       @id @default(autoincrement())\n  name      String    @unique\n  products  Product[] // Relasi balik: 1 Kategori -> Banyak Produk\n  createdAt DateTime  @default(now())\n  updatedAt DateTime  @updatedAt\n\n  @@map(\"categories\")\n}\n\nmodel Product {\n  id          Int     @id @default(autoincrement())\n  name        String\n  description String?\n  price       Decimal @db.Decimal(10, 2)\n  stock       Int     @default(0)\n\n  // === TAMBAHAN RELASI ===\n  categoryId Int? // Foreign Key\n  category   Category? @relation(fields: [categoryId], references: [id])\n  // =======================\n\n  createdAt DateTime  @default(now())\n  updatedAt DateTime  @updatedAt\n  deletedAt DateTime?\n\n  @@map(\"products\")\n}\n\n// This is your Prisma schema file,\n// learn more about it in the docs: https://pris.ly/d/prisma-schema\n\n// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?\n// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init\n\ngenerator client {\n  provider = \"prisma-client\"\n  output   = \"../generated\"\n}\n\ndatasource db {\n  provider = \"postgresql\"\n}\n",
   "runtimeDataModel": {
     "models": {},
     "enums": {},
@@ -5048,7 +5260,7 @@ const config: runtime.GetPrismaClientConfig = {
   }
 }
 
-config.runtimeDataModel = JSON.parse("{\"models\":{\"Category\":{\"fields\":[{\"name\":\"id\",\"kind\":\"scalar\",\"type\":\"Int\"},{\"name\":\"name\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"products\",\"kind\":\"object\",\"type\":\"Product\",\"relationName\":\"CategoryToProduct\"},{\"name\":\"createdAt\",\"kind\":\"scalar\",\"type\":\"DateTime\"},{\"name\":\"updatedAt\",\"kind\":\"scalar\",\"type\":\"DateTime\"}],\"dbName\":\"categories\"},\"Product\":{\"fields\":[{\"name\":\"id\",\"kind\":\"scalar\",\"type\":\"Int\"},{\"name\":\"name\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"description\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"price\",\"kind\":\"scalar\",\"type\":\"Decimal\"},{\"name\":\"stock\",\"kind\":\"scalar\",\"type\":\"Int\"},{\"name\":\"categoryId\",\"kind\":\"scalar\",\"type\":\"Int\"},{\"name\":\"category\",\"kind\":\"object\",\"type\":\"Category\",\"relationName\":\"CategoryToProduct\"},{\"name\":\"createdAt\",\"kind\":\"scalar\",\"type\":\"DateTime\"},{\"name\":\"updatedAt\",\"kind\":\"scalar\",\"type\":\"DateTime\"}],\"dbName\":\"products\"}},\"enums\":{},\"types\":{}}")
+config.runtimeDataModel = JSON.parse("{\"models\":{\"Category\":{\"fields\":[{\"name\":\"id\",\"kind\":\"scalar\",\"type\":\"Int\"},{\"name\":\"name\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"products\",\"kind\":\"object\",\"type\":\"Product\",\"relationName\":\"CategoryToProduct\"},{\"name\":\"createdAt\",\"kind\":\"scalar\",\"type\":\"DateTime\"},{\"name\":\"updatedAt\",\"kind\":\"scalar\",\"type\":\"DateTime\"}],\"dbName\":\"categories\"},\"Product\":{\"fields\":[{\"name\":\"id\",\"kind\":\"scalar\",\"type\":\"Int\"},{\"name\":\"name\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"description\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"price\",\"kind\":\"scalar\",\"type\":\"Decimal\"},{\"name\":\"stock\",\"kind\":\"scalar\",\"type\":\"Int\"},{\"name\":\"categoryId\",\"kind\":\"scalar\",\"type\":\"Int\"},{\"name\":\"category\",\"kind\":\"object\",\"type\":\"Category\",\"relationName\":\"CategoryToProduct\"},{\"name\":\"createdAt\",\"kind\":\"scalar\",\"type\":\"DateTime\"},{\"name\":\"updatedAt\",\"kind\":\"scalar\",\"type\":\"DateTime\"},{\"name\":\"deletedAt\",\"kind\":\"scalar\",\"type\":\"DateTime\"}],\"dbName\":\"products\"}},\"enums\":{},\"types\":{}}")
 
 async function decodeBase64AsWasm(wasmBase64: string): Promise<WebAssembly.Module> {
   const { Buffer } = await import('node:buffer')
