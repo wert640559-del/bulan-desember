@@ -5,6 +5,7 @@ const prisma = getPrisma()
 
 export const getAllCategories = async (): Promise<Category[]> => {
     return await prisma.category.findMany({
+        where: { deletedAt: null },
         include: { products: true }
     })
 }
@@ -13,7 +14,10 @@ export const getCategoryById = async (id: string): Promise<Category> => {
     const numId = parseInt(id)
 
     const category = await prisma.category.findUnique({
-        where: { id: numId },
+        where: { 
+            id: numId,
+            deletedAt: null
+        },
         include: { products: true }
     })
 
@@ -25,7 +29,12 @@ export const getCategoryById = async (id: string): Promise<Category> => {
 }
 
 export const createCategory = async (name: string): Promise<Category> => {
-    const isExist = await prisma.category.findUnique({ where: { name } })
+    const isExist = await prisma.category.findFirst({ 
+        where: { 
+            name,
+            deletedAt: null
+        }
+    })
     if (isExist) throw new Error("Nama kategori sudah ada")
 
     return await prisma.category.create({ 
@@ -39,7 +48,10 @@ export const updateCategory = async (id: string, data: Partial<Category>): Promi
     const numId = parseInt(id)
 
     return await prisma.category.update({
-        where: { id: numId },
+        where: { 
+            id: numId,
+            deletedAt: null 
+        },
         data
     })
 }
@@ -49,7 +61,8 @@ export const deleteCategory = async (id: string): Promise<Category> => {
 
     const numId = parseInt(id)
     
-    return await prisma.category.delete({
-        where: { id: numId }
+    return await prisma.category.update({
+        where: { id: numId },
+        data: { deletedAt: new Date() }
     })
 }
