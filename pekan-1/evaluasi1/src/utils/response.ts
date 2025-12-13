@@ -23,11 +23,11 @@ export const successResponse = (
     statusCode: number = 200
 ) => {
     const response: ApiResponse = {
-        success: true, 
+        success: true,
         message
     }
 
-    if (data) response.data = data
+    if (data !== null) response.data = data
     if (pagination) response.pagination = pagination
 
     return res.status(statusCode).json(response)
@@ -42,10 +42,9 @@ export const errorResponse = (
     const response: ApiResponse = {
         success: false,
         message,
-    }
+    };
 
     if (errors) response.errors = errors;
 
     return res.status(statusCode).json(response);
 }
-

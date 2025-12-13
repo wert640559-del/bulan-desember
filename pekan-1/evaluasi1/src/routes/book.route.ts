@@ -1,14 +1,20 @@
 import { Router } from "express";
-import { create, getAll, getById, remove, search, update } from "../controllers/book.controller";
-import { createBookValidation, getBookByIdValidation, validate } from "../middlewares/book.validation";
+import {
+    createBookValidation,
+    getBookByIdValidation,
+    searchBookValidation,
+    updateBookValidation
+} from "../middlewares/book.validation";
+import * as bookController from '../controllers/book.controller';
+import { validate } from "../utils/validator";
 
-const router = Router()
+const router = Router();
 
-router.get('/', getAll)
-router.get('/search', search)
-router.get('/:id', validate(getBookByIdValidation), getById)
-router.post('/', validate(createBookValidation), create)
-router.put('/:id', validate(createBookValidation), update)
-router.delete('/:id', validate(getBookByIdValidation), remove)
+router.get('/', bookController.getAll);
+router.get('/search', validate(searchBookValidation), bookController.search);
+router.get('/:id', validate(getBookByIdValidation), bookController.getById);
+router.post('/', validate(createBookValidation), bookController.create);
+router.put('/:id', validate(updateBookValidation), bookController.update);
+router.delete('/:id', validate(getBookByIdValidation), bookController.remove);
 
 export default router;

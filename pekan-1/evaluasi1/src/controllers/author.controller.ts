@@ -1,25 +1,19 @@
 import type { Request, Response } from "express";
 import { successResponse } from "../utils/response";
-import {
-    createBook,
-    deleteBook,
-    getAllBooks,
-    getBookById,
-    searchBooks,
-    updateBook
-} from "../services/book.service";
+import { createAuthor, deleteAuthor, getAllAuthors, getAuthorById, searchAuthors, updateAuthor } from "../services/author.service";
+
 
 export const getAll = async (req: Request, res: Response) => {
     const { page = 1, limit = 10 } = req.query;
-    const { books, total } = await getAllBooks(
+    const { authors, total } = await getAllAuthors(
         Number(page),
         Number(limit)
     );
 
     successResponse(
         res,
-        "Buku berhasil diambil",
-        books,
+        "Penulis berhasil diambil",
+        authors,
         {
             page: Number(page),
             limit: Number(limit),
@@ -33,49 +27,46 @@ export const getById = async (req: Request, res: Response) => {
         throw new Error("Parameter id tidak ada");
     }
 
-    const book = await getBookById(req.params.id);
+    const author = await getAuthorById(req.params.id);
 
     successResponse(
         res,
-        "Buku berhasil diambil",
-        book
+        "Penulis berhasil diambil",
+        author
     );
 };
 
 export const search = async (req: Request, res: Response) => {
-    const { title, author, year } = req.query;
+    const { name } = req.query;
 
-    const result = await searchBooks(
-        title?.toString(),
-        author?.toString(),
-        year ? Number(year) : undefined
-    );
+    const result = await searchAuthors(name?.toString());
 
     successResponse(
         res,
-        "Pencarian buku berhasil",
+        "Pencarian penulis berhasil",
         result
     );
 };
 
 export const create = async (req: Request, res: Response) => {
-    const { title, isbn, description, year, stock, authorId } = req.body;
+    const { name, bio, birthDate } = req.body;
     
+    if (!name || !birthDate) {
+        throw new Error("Nama dan tanggal lahir wajib diisi");
+    }
+
     const data = {
-        title: String(title),
-        isbn: String(isbn),
-        year: Number(year),
-        stock: Number(stock),
-        authorId: String(authorId),
-        ...(description && { description: String(description) })
+        name: String(name),
+        birthDate: new Date(birthDate),
+        ...(bio && { bio: String(bio) })
     };
 
-    const book = await createBook(data);
+    const author = await createAuthor(data);
 
     successResponse(
         res,
-        "Buku berhasil ditambahkan",
-        book,
+        "Penulis berhasil dibuat",
+        author,
         null,
         201
     );
@@ -86,12 +77,12 @@ export const update = async (req: Request, res: Response) => {
         throw new Error("Parameter id tidak ada");
     }
 
-    const book = await updateBook(req.params.id, req.body);
+    const author = await updateAuthor(req.params.id, req.body);
 
     successResponse(
         res,
-        "Buku berhasil diupdate",
-        book
+        "Penulis berhasil diupdate",
+        author
     );
 };
 
@@ -100,11 +91,11 @@ export const remove = async (req: Request, res: Response) => {
         throw new Error("Parameter id tidak ada");
     }
 
-    const deleted = await deleteBook(req.params.id);
+    const deleted = await deleteAuthor(req.params.id);
 
     successResponse(
         res,
-        "Buku berhasil dihapus",
+        "Penulis berhasil dihapus",
         deleted
     );
 };

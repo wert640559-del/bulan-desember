@@ -1,47 +1,66 @@
-import type { NextFunction, Request, Response } from "express";
-import { body, param, validationResult, type ValidationChain } from "express-validator";
-import { errorResponse } from "../utils/response";
-
-export const validate = (validations: ValidationChain[]) => {
-    return async (req: Request, res: Response, next: NextFunction) => {
-        await Promise.all(validations.map(validation => validation.run(req)))
-
-        const errors = validationResult(req)
-        if (errors.isEmpty()) {
-            return next()
-        }
-
-        const errorList = errors.array().map(err => ({
-            field: err.type === 'field' ? err.path : 'unknown',
-            message: err.msg
-        }))
-
-        return errorResponse(res, "Validasi gak berhasil", 400, errorList)
-    } 
-}
+import { body, param, query } from "express-validator";
 
 export const createBookValidation = [
-    body('judul')
+    body('title')
         .trim()
-        .notEmpty().withMessage('Judul harus diisi')
-        .isLength({ min: 3 }).withMessage('Nama Buku minimal 3 karakter'),
+        .notEmpty().withMessage('Judul buku wajib diisi')
+        .isLength({ min: 3 }).withMessage('Judul buku minimal 3 karakter'),
 
-     body('penulis')
+    body('isbn')
         .trim()
-        .notEmpty().withMessage('Penulis wajib diisi')
-        .isLength({ min: 3 }).withMessage('Penulis minimal 3 karakter'),
+        .notEmpty().withMessage('ISBN wajib diisi')
+        .isLength({ min: 10, max: 13 }).withMessage('ISBN harus 10-13 karakter'),
 
-    body('tahun')
-        .isNumeric().withMessage('Tahun harus angka')
-        .custom(value => value > 0).withMessage('Tahun harus lebih dari 0')
-        .custom(value => value <= new Date().getFullYear()).withMessage('Tahun tidak boleh melebihi tahun sekarang'),
+    body('year')
+        .isInt({ min: 1000, max: new Date().getFullYear() })
+        .withMessage('Tahun terbit harus valid'),
 
-    body('stok')
-        .isNumeric().withMessage('Stok harus angka')
-        .custom(value => value >= 0).withMessage('Stok tidak boleh negatif')
-]
+    body('stock')
+        .isInt({ min: 0 }).withMessage('Stok tidak boleh negatif'),
+
+    body('authorId')
+        .trim()
+        .notEmpty().withMessage('ID penulis wajib diisi')
+        .isUUID().withMessage('ID penulis harus UUID valid')
+];
+
+export const updateBookValidation = [
+    param('id')
+        .isUUID().withMessage('ID harus UUID valid'),
+
+    body('isbn')
+        .optional()
+        .trim()
+        .isLength({ min: 10, max: 13 }).withMessage('ISBN harus 10-13 karakter'),
+
+    body('year')
+        .optional()
+        .isInt({ min: 1000, max: new Date().getFullYear() })
+        .withMessage('Tahun terbit harus valid'),
+
+    body('stock')
+        .optional()
+        .isInt({ min: 0 }).withMessage('Stok tidak boleh negatif')
+];
 
 export const getBookByIdValidation = [
     param('id')
-        .isNumeric().withMessage('Id harus angka')
-]
+        .isUUID().withMessage('ID harus UUID valid')
+];
+
+export const searchBookValidation = [
+    query('title')
+        .optional()
+        .trim()
+        .isLength({ min: 1 }).withMessage('Judul pencarian minimal 1 karakter'),
+
+    query('author')
+        .optional()
+        .trim()
+        .isLength({ min: 1 }).withMessage('Nama penulis pencarian minimal 1 karakter'),
+
+    query('year')
+        .optional()
+        .isInt({ min: 1000, max: new Date().getFullYear() })
+        .withMessage('Tahun harus valid')
+];
